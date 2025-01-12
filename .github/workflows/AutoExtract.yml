@@ -1,0 +1,107 @@
+name: auto extract framework Settings SystemUI
+
+on:
+  workflow_dispatch:
+    inputs:
+      URL:
+        description: "Official zip Rom package download address"
+        required: true
+        default: 'https://bn.d.miui.com/OS2.0.13.0.VNACNXM/aurora-ota_full-OS2.0.13.0.VNACNXM-user-15.0-cc9c5b9dc1.zip'
+      
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      actions: write
+
+    steps:
+    - name: Maximize your build environment
+      uses: easimon/maximize-build-space@master
+      with:
+        swap-size-mb: 8192
+        root-reserve-mb: 4096
+        temp-reserve-mb: 4096
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '11'
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt full-upgrade -y
+        sudo apt install -y default-jdk zipalign p7zip-full python3 aria2
+      
+    
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    - name: Download firmware and extract
+      run: |
+        sudo bash "${GITHUB_WORKSPACE}/run.sh" "${{ github.event.inputs.URL }}" "${GITHUB_ENV}" "${GITHUB_WORKSPACE}"
+
+
+    - name: Clone smali repository
+      run: git clone --depth=1 https://github.com/JesusFreke/smali.git
+    
+    - name: Build smali and baksmali
+      run: |
+        cd smali
+        ./gradlew build
+
+    - name: Copy files to Magisk module
+      run: |
+        mkdir -p magisk_module/system/framework
+        mkdir -p magisk_module/system/system_ext/framework
+        mkdir -p magisk_module/system/system_ext/priv-app
+        mkdir -p magisk_module/system/system_ext/priv-app/Settings
+        mkdir -p magisk_module/system/system_ext/priv-app/MiuiSystemUI
+        cp MiuiSystemUI.apk magisk_module/system/system_ext/priv-app/MiuiSystemUI/MiuiSystemUI.apk
+        cp Settings.apk magisk_module/system/system_ext/priv-app/Settings/Settings.apk
+        cp framework.jar magisk_module/system/framework/framework.jar
+        cp services.jar magisk_module/system/framework/services.jar
+        cp miui-services.jar magisk_module/system/system_ext/framework/miui-services.jar
+        cp miui-framework.jar magisk_module/system/system_ext/framework/miui-framework.jar
+
+
+    - name: Zip Magisk module
+      run: |
+        cd magisk_module
+        zip -r ../nomoded_framework_services_${{ env.device_name }}_${{ env.version }}.zip *
+        cd ..
+        mkdir -p out
+        chmod +w nomoded_framework_services_${{ env.device_name }}_${{ env.version }}.zip
+        mv nomoded_framework_services_${{ env.device_name }}_${{ env.version }}.zip out/
+
+    - name: Create Release Notes
+      run: |
+        echo "## Release Notes" > release_notes.txt
+        echo "- Make from commit ${{ github.sha }}" >> release_notes.txt
+        echo "- Version: ${{ env.version }}" >> release_notes.txt
+        echo "- URL: ${{ github.event.inputs.URL }}" >> release_notes.txt
+
+
+    - name: Upload File
+      run: |
+        User="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        url2=$(curl -s https://api.gofile.io/servers | jq -r '.data.servers[0].name')
+        [ -z "$url2" ] && url2="store$(( $RANDOM % 8 + 1 ))"
+        LinkFile="$(curl --dns-servers '1.1.1.1' -L -N -H "$User" -F "file=@out/nomoded_framework_services_${{ env.device_name }}_${{ env.version }}.zip" "https://${url2}.gofile.io/uploadFile" | jq -r .data.downloadPage)"
+        echo -e "Link: $LinkFile" >> release_notes.txt
+    - name: Create Release
+      uses: ncipollo/release-action@v1
+      with:
+          artifacts: out/*
+          tag: ${{ env.version }}
+          name: nomoded_${{ env.device_name }}_${{ env.version }}
+          allowUpdates: true
+          makeLatest: true
+          bodyFile: release_notes.txt
+          token: ${{ secrets.GITHUB_TOKEN }}
