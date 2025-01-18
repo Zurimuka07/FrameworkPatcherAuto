@@ -1,13 +1,13 @@
 import os
 import re
 import logging
-import shutil
 import sys
 import utils
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 defaultcore = sys.argv[1].lower() == 'true'
 core = sys.argv[2].lower() == 'true'
+isa15 = sys.argv[3].lower() == 'true'
 
 def modify_package_parser(file_path):
     logging.info(f"Modifying PackageParser file: {file_path}")
@@ -63,7 +63,7 @@ def modify_is_error(file_path):
     with open(file_path, 'w') as file:
         file.writelines(modified_lines)
 
-    logging.info(f"Completed modification for file: {file_path}")
+    logging.info(f"Completed is_error modification for file: {file_path}")
 
 def modify_exception_file(file_path):
     logging.info(f"Modifying exception file: {file_path}")
@@ -99,7 +99,10 @@ def modify_apk_signature_verifier(file_path, scheme_version):
             r'invoke-static \{p0, p1, p3\}, Landroid/util/apk/ApkSignatureVerifier;->verifyV3Signature\(Landroid/content/pm/parsing/result/ParseInput;Ljava/lang/String;Z\)Landroid/content/pm/parsing/result/ParseResult;')
     elif scheme_version == 'v3_and_below':
         pattern = re.compile(
-            r'invoke-static \{p0, p1, p3\}, Landroid/util/apk/ApkSignatureVerifier;->verifyV3AndBelowSignatures\(Landroid/content/pm/parsing/result/ParseInput;Ljava/lang/String;Z\)Landroid/content/pm/parsing/result/ParseResult;')
+            r'invoke-static \{p0, p1, p2, p3\}, Landroid/util/apk/ApkSignatureVerifier;->verifyV3AndBelowSignatures\(Landroid/content/pm/parsing/result/ParseInput;Ljava/lang/String;IZ\)Landroid/content/pm/parsing/result/ParseResult;')
+    elif scheme_version == 'v4':
+        pattern = re.compile(
+            r'invoke-static \{p0, p1, p2, p3\}, Landroid/util/apk/ApkSignatureVerifier;->verifyV4Signature\(Landroid/content/pm/parsing/result/ParseInput;Ljava/lang/String;IZ\)Landroid/content/pm/parsing/result/ParseResult;')
     else:
         raise ValueError(f"Unsupported scheme version: {scheme_version}")
 
@@ -190,6 +193,92 @@ def modify_strict_jar_file(file_path):
 
     logging.info(f"Modification completed for file: {file_path}")
 
+def modify_PackageParser_sharedUserId(file_path):
+    logging.info(f"Modifying parseBaseApkCommon in {file_path}")
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+
+    modified_lines = []
+    in_method = False
+    const_string_index = None
+    target_register = None
+    last_if_nez_index = None
+
+    for i, line in enumerate(lines):
+        if re.match(r'\.method.*parseBaseApkCommon\(.*\)', line) and "private" in line:
+            logging.info("Found the method: parseBaseApkCommon.")
+            in_method = True
+
+        if in_method:
+            if re.search(r'const-string.*<manifest>.*sharedUserId', line):
+                logging.info(f"Found const-string with error message at line {i + 1}: {line.strip()}")
+                const_string_index = i
+                break
+
+            if "if-nez" in line:
+                last_if_nez_index = i
+                match = re.search(r'if-nez (\w+),', line)
+                if match:
+                    target_register = match.group(1)
+
+    if last_if_nez_index is not None and const_string_index is not None and last_if_nez_index < const_string_index:
+        logging.info(f"Modifying 'if-nez' at line {last_if_nez_index + 1}: {lines[last_if_nez_index].strip()}")
+        modified_lines = (
+            lines[:last_if_nez_index]
+            + [f"    const/4 {target_register}, 0x1\n"]
+            + lines[last_if_nez_index:]
+        )
+    else:
+        logging.warning("Failed to find a valid 'if-nez' before the const-string.")
+        modified_lines = lines
+
+    with open(file_path, 'w') as file:
+        file.writelines(modified_lines)
+    logging.info(f"Completed modification for parseBaseApkCommon in {file_path}")
+
+def modify_Parsing_Package_Utils_sharedUserId(file_path):
+    logging.info(f"Modifying parseSharedUser in {file_path}")
+    with open(file_path, 'r') as file:
+        lines = file.readlines()
+
+    modified_lines = []
+    in_method = False
+    const_string_index = None
+    target_register = None
+    last_if_eqz_index = None
+
+    for i, line in enumerate(lines):
+        if re.match(r'\.method.*parseSharedUser\(.*\)', line) and "private" in line:
+            logging.info("Found the method: parseSharedUser.")
+            in_method = True
+
+        if in_method:
+            if re.search(r'const-string.*<manifest>.*sharedUserId', line):
+                logging.info(f"Found const-string with error message at line {i + 1}: {line.strip()}")
+                const_string_index = i
+                break
+
+            if "if-eqz" in line:
+                last_if_eqz_index = i
+                match = re.search(r'if-eqz (\w+),', line)
+                if match:
+                    target_register = match.group(1)
+
+    if last_if_eqz_index is not None and const_string_index is not None and last_if_eqz_index < const_string_index:
+        logging.info(f"Modifying 'if-eqz' at line {last_if_eqz_index + 1}: {lines[last_if_eqz_index].strip()}")
+        modified_lines = (
+            lines[:last_if_eqz_index]
+            + [f"    const/4 {target_register}, 0x0\n"]
+            + lines[last_if_eqz_index:]
+        )
+    else:
+        logging.warning("Failed to find a valid 'if-eqz' before the const-string.")
+        modified_lines = lines
+
+    with open(file_path, 'w') as file:
+        file.writelines(modified_lines)
+    logging.info(f"Completed modification for parseSharedUser in {file_path}")
+
 def modify_smali_files(directories):
     for directory in directories:
         logging.info(f"Scanning directory: {directory}")
@@ -199,18 +288,18 @@ def modify_smali_files(directories):
                     filepath = os.path.join(root, file)
                     utils.patch(filepath)
         signing_details = os.path.join(directory, 'android/content/pm/SigningDetails.smali')
-        package_parser_signing_details = os.path.join(directory,
-                                                      'android/content/pm/PackageParser$SigningDetails.smali')
+        package_parser_signing_details = os.path.join(directory, 'android/content/pm/PackageParser$SigningDetails.smali')
+        application_info = os.path.join(directory, 'android/content/pm/ApplicationInfo.smali')
         apk_signature_verifier = os.path.join(directory, 'android/util/apk/ApkSignatureVerifier.smali')
+        strict_jar_file = os.path.join(directory, 'android/util/jar/StrictJarFile.smali')
+        Strict_Jar_Verifier = os.path.join(directory,'android/util/jar/StrictJarVerifier.smali')
+        #a15
+        package_parser = os.path.join(directory, 'android/content/pm/PackageParser.smali')
+        package_parser_exception = os.path.join(directory, 'android/content/pm/PackageParser$PackageParserException.smali')
         apk_signature_scheme_v2_verifier = os.path.join(directory, 'android/util/apk/ApkSignatureSchemeV2Verifier.smali')
         apk_signature_scheme_v3_verifier = os.path.join(directory, 'android/util/apk/ApkSignatureSchemeV3Verifier.smali')
         Apk_Signing_Block_Utils = os.path.join(directory, 'android/util/apk/ApkSigningBlockUtils.smali')
-        package_parser = os.path.join(directory, 'android/content/pm/PackageParser.smali')
-        package_parser_exception = os.path.join(directory,
-                                                'android/content/pm/PackageParser$PackageParserException.smali')
-        Strict_Jar_Verifier = os.path.join(directory,'android/util/jar/StrictJarVerifier.smali')
-        strict_jar_file = os.path.join(directory, 'android/util/jar/StrictJarFile.smali')
-        application_info = os.path.join(directory, 'android/content/pm/ApplicationInfo.smali')
+        Parsing_Package_Utils = os.path.join(directory, 'com/android/internal/pm/pkg/parsing/ParsingPackageUtils.smali')
         if defaultcore:
             if os.path.exists(signing_details):
                 logging.info(f"Found file: {signing_details}")
@@ -222,52 +311,66 @@ def modify_smali_files(directories):
                 utils.modify_file(package_parser_signing_details, "framework")
             else:
                 logging.warning(f"File not found: {package_parser_signing_details}")
-            if os.path.exists(application_info):
+            if os.path.exists(application_info) and not isa15:
                 logging.info(f"Found file: {application_info}")
                 utils.modify_file(application_info, "framework")
         if core and defaultcore:
-            if os.path.exists(apk_signature_scheme_v2_verifier):
-                logging.info(f"Found file: {apk_signature_scheme_v2_verifier}")
-                modify_invoke_static(apk_signature_scheme_v2_verifier)
-            else:
-                logging.warning(f"File not found: {apk_signature_scheme_v2_verifier}")
-            if os.path.exists(apk_signature_scheme_v3_verifier):
-                logging.info(f"Found file: {apk_signature_scheme_v3_verifier}")
-                modify_invoke_static(apk_signature_scheme_v3_verifier)
-            else:
-                logging.warning(f"File not found: {apk_signature_scheme_v3_verifier}")
-            if os.path.exists(apk_signature_verifier):
+            if os.path.exists(apk_signature_verifier) and not isa15: # a14
                 logging.info(f"Found file: {apk_signature_verifier}")
                 modify_apk_signature_verifier(apk_signature_verifier, 'v1')
                 modify_apk_signature_verifier(apk_signature_verifier, 'v2')
                 modify_apk_signature_verifier(apk_signature_verifier, 'v3')
                 modify_apk_signature_verifier(apk_signature_verifier, 'v3_and_below')
+                modify_apk_signature_verifier(apk_signature_verifier, 'v4')
                 modify_is_error(apk_signature_verifier)
                 utils.modify_file(apk_signature_verifier, "framework")
+            elif os.path.exists(apk_signature_verifier) and isa15:
+                utils.modify_file(apk_signature_verifier, "framework")
+                modify_apk_signature_verifier(apk_signature_verifier, 'v1')
             else:
                 logging.warning(f"File not found: {apk_signature_verifier}")
-            if os.path.exists(Strict_Jar_Verifier):
-                logging.info(f"Found file: {Strict_Jar_Verifier}")
-                utils.modify_file(Strict_Jar_Verifier, "framework")
-            else:
-                logging.warning(f"File not found: {Strict_Jar_Verifier}")
-            if os.path.exists(Apk_Signing_Block_Utils):
-                modify_invoke_static(Apk_Signing_Block_Utils)
-            if os.path.exists(package_parser):
-                logging.info(f"Found file: {package_parser}")
-                modify_package_parser(package_parser)
-            else:
-                logging.warning(f"File not found: {package_parser}")
-            if os.path.exists(package_parser_exception):
-                logging.info(f"Found file: {package_parser_exception}")
-                modify_exception_file(package_parser_exception)
-            else:
-                logging.warning(f"File not found: {package_parser_exception}")
             if os.path.exists(strict_jar_file):
                 logging.info(f"Found file: {strict_jar_file}")
                 modify_strict_jar_file(strict_jar_file)
             else:
                 logging.warning(f"File not found: {strict_jar_file}")
+            if os.path.exists(Strict_Jar_Verifier):
+                logging.info(f"Found file: {Strict_Jar_Verifier}")
+                utils.modify_file(Strict_Jar_Verifier, "framework")
+            else:
+                logging.warning(f"File not found: {Strict_Jar_Verifier}")
+            # a15
+            if os.path.exists(package_parser) and isa15:
+                logging.info(f"Found file: {package_parser}")
+                modify_package_parser(package_parser)
+                modify_PackageParser_sharedUserId(package_parser)
+            else:
+                logging.warning(f"File not found: {package_parser}")
+            if os.path.exists(package_parser_exception) and isa15:
+                logging.info(f"Found file: {package_parser_exception}")
+                modify_exception_file(package_parser_exception)
+            else:
+                logging.warning(f"File not found: {package_parser_exception}")
+            if os.path.exists(apk_signature_scheme_v2_verifier) and isa15:
+                logging.info(f"Found file: {apk_signature_scheme_v2_verifier}")
+                modify_invoke_static(apk_signature_scheme_v2_verifier)
+            else:
+                logging.warning(f"File not found: {apk_signature_scheme_v2_verifier}")
+            if os.path.exists(apk_signature_scheme_v3_verifier) and isa15:
+                logging.info(f"Found file: {apk_signature_scheme_v3_verifier}")
+                modify_invoke_static(apk_signature_scheme_v3_verifier)
+            else:
+                logging.warning(f"File not found: {apk_signature_scheme_v3_verifier}")
+            if os.path.exists(Apk_Signing_Block_Utils) and isa15:
+                logging.info(f"Found file: {Apk_Signing_Block_Utils}")
+                modify_invoke_static(Apk_Signing_Block_Utils)
+            else:
+                logging.warning(f"File not found: {Apk_Signing_Block_Utils}")
+            if os.path.exists(Parsing_Package_Utils) and isa15:
+                logging.info(f"Found file: {Parsing_Package_Utils}")
+                modify_Parsing_Package_Utils_sharedUserId(Parsing_Package_Utils)
+            else:
+                logging.warning(f"File not found: {Parsing_Package_Utils}")
 
 
 if __name__ == "__main__":

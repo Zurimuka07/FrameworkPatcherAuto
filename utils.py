@@ -72,7 +72,7 @@ def modify_file(file_path, flag):
     if flag == "framework":
         method_patterns = {
             "getMinimumSignatureSchemeVersionForTargetSdk": re.compile(r'\.method.*getMinimumSignatureSchemeVersionForTargetSdk\(I\)I'),
-            "verifyMessageDigest" : re.compile(r'\.method.*verifyMessageDigest\(\)I'),
+            "verifyMessageDigest" : re.compile(r'\.method.*verifyMessageDigest\(.*\)Z'),
             "checkCapability": re.compile(r'\.method.*checkCapability\(.*\)Z'),
             "checkCapabilityRecover": re.compile(r'\.method.*checkCapabilityRecover\(.*\)Z'),
             "hasAncestorOrSelf": re.compile(r'\.method.*hasAncestorOrSelf\(.*\)Z'),
@@ -240,7 +240,10 @@ def modify_file(file_path, flag):
                         modified_lines.append("    .registers 4\n")
                         modified_lines.append("    const/4 v0, 0x1\n")
                         modified_lines.append("    return v0\n")
-
+                    elif method_type == "notAllowCaptureDisplay":
+                        modified_lines.append("    .registers 4\n")
+                        modified_lines.append("    const/4 v0, 0x0\n")
+                        modified_lines.append("    return v0\n")
                 in_method = False
                 method_type = None
                 original_registers_line = ""
