@@ -58,7 +58,7 @@ def patch(filepath):
         file.writelines(modified_lines)
     logging.info(f"Completed modification for file: {filepath}")
 
-def modify_file(file_path, flag):
+def modify_file(file_path, flag, iscn):
     logging.info(f"Modifying file: {file_path}")
     with open(file_path, 'r') as file:
         lines = file.readlines()
@@ -80,14 +80,18 @@ def modify_file(file_path, flag):
         }
     elif flag == "services":
         method_patterns = {
-            "matchSignatureInSystem": re.compile(r'\.method.*matchSignatureInSystem\(.*\)Z'),
+            #a14
+            "checkDowngrade": re.compile(r'\.method.*checkDowngrade\(.*\)V'),
+            "shouldCheckUpgradeKeySetLocked": re.compile(r'\.method.*shouldCheckUpgradeKeySetLocked\(.*\)Z'),
+            "verifySignatures": re.compile(r'\.method.*verifySignatures\(.*\)Z'),
             "matchSignaturesCompat": re.compile(r'\.method.*matchSignaturesCompat\(.*\)Z'),
+            #..
+            # "compareSignatures": re.compile(r'\.method.*compareSignatures\(.*\)I'),
+            "matchSignatureInSystem": re.compile(r'\.method.*matchSignatureInSystem\(.*\)Z'),
             "matchSignaturesRecover": re.compile(r'\.method.*matchSignaturesRecover\(.*\)Z'),
             "canSkipForcedPackageVerification": re.compile(r'\.method.*canSkipForcedPackageVerification\(.*\)Z'),
-            "checkDowngrade": re.compile(r'\.method.*checkDowngrade\(.*\)V'),
             "isApkVerityEnabled": re.compile(r'\.method.*isApkVerityEnabled\(.*\)Z'),
             "isDowngradePermitted": re.compile(r'\.method.*isDowngradePermitted\(.*\)Z'),
-            "verifySignatures": re.compile(r'\.method.*verifySignatures\(.*\)Z'),
             "isVerificationEnabled": re.compile(r'\.method.*isVerificationEnabled\(.*\)Z'),
             "doesSignatureMatchForPermissions": re.compile(r'\.method.*doesSignatureMatchForPermissions\(.*\)Z'),
             "isScreenCaptureAllowed": re.compile(r'\.method.*isScreenCaptureAllowed\(.*\)Z'),
@@ -95,7 +99,6 @@ def modify_file(file_path, flag):
             "setScreenCaptureDisabled": re.compile(r'\.method.*setScreenCaptureDisabled\(.*\)V'),
             "isSecureLocked": re.compile(r'\.method.*isSecureLocked\(.*\)Z'),
             "setSecure": re.compile(r'\.method.*setSecure\(.*\)V'),
-            "shouldCheckUpgradeKeySetLocked": re.compile(r'\.method.*shouldCheckUpgradeKeySetLocked\(.*\)Z'),
             "getMaxMiuiFreeFormStackCount": re.compile(r'\.method.*getMaxMiuiFreeFormStackCount\(.*\)I'),
             "notAllowCaptureDisplay": re.compile(r'\.method.*notAllowCaptureDisplay\(.*\)Z'),
         }
@@ -229,7 +232,7 @@ def modify_file(file_path, flag):
                         modified_lines.append("    .registers 14\n")
                         modified_lines.append("    return-void\n")
                     elif method_type == "shouldCheckUpgradeKeySetLocked":
-                        modified_lines.append("    .registers 3\n")
+                        modified_lines.append(original_registers_line)
                         modified_lines.append("    const/4 v0, 0x0\n")
                         modified_lines.append("    return v0\n")
                     elif method_type == "getMaxMiuiFreeFormStackCount":
