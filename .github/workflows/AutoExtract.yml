@@ -6,7 +6,7 @@ on:
       URL:
         description: "Official zip Rom package download address"
         required: true
-        default: 'https://bn.d.miui.com/OS2.0.13.0.VNACNXM/aurora-ota_full-OS2.0.13.0.VNACNXM-user-15.0-cc9c5b9dc1.zip'
+        default: 'https://bkt-sgp-miui-ota-update-alisgp.oss-ap-southeast-1.aliyuncs.com/OS2.0.2.0.VNPIDXM/peridot_id_global-ota_full-OS2.0.2.0.VNPIDXM-user-15.0-4c9c05b00d.zip'
       
 
 jobs:
